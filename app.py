@@ -9,9 +9,8 @@ import requests
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
-import json
 import io
-import numpy as np
+import random  # Reemplazamos numpy por la librería estándar
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN DE PÁGINA
@@ -93,11 +92,8 @@ def descargar_csv_recurso(url_csv: str) -> pd.DataFrame:
     """Descarga un archivo CSV desde la URL del recurso y retorna un DataFrame."""
     resp = requests.get(url_csv, timeout=60)
     resp.raise_for_status()
-    # Intentar detectar separador
-    sample = resp.text[:2000]
-    sep = ";" if sample.count(";") > sample.count(",") else ","
-    df = pd.read_csv(io.StringIO(resp.text), sep=sep, encoding="utf-8",
-                     on_bad_lines="skip")
+    # Leemos directamente los bytes, es más rápido y eficiente que procesar el texto
+    df = pd.read_csv(io.BytesIO(resp.content), sep=None, engine='python', encoding="utf-8", on_bad_lines="skip")
     return df
 
 
@@ -111,7 +107,7 @@ def buscar_recursos_csv(metadata: dict) -> list[dict]:
 def generar_datos_ene_ficticios() -> pd.DataFrame:
     """
     Genera un DataFrame representativo de la ENE cuando
-    la API no está disponible, para demostración.
+    la API no está disponible, usando solo librería estándar (random).
     """
     trimestres = [
         "EFM", "FMA", "MAM", "AMJ", "MJJ", "JJA",
@@ -124,7 +120,7 @@ def generar_datos_ene_ficticios() -> pd.DataFrame:
         "Maule", "Ñuble", "Biobío", "La Araucanía",
         "Los Ríos", "Los Lagos", "Aysén", "Magallanes",
     ]
-    np.random.seed(42)
+    random.seed(42)
     filas = []
     for año in años:
         for tri in trimestres:
@@ -135,17 +131,17 @@ def generar_datos_ene_ficticios() -> pd.DataFrame:
                     base_ocup  = 57.0 if sexo == "Total" else (65.0 if sexo == "Hombre" else 49.5)
                     # COVID spike en 2020
                     covid = 4.5 if año == 2020 else (2.0 if año == 2021 else 0.0)
-                    # Variación por región
-                    reg_var = np.random.uniform(-1.5, 1.5)
+                    # Variación por región usando random estándar
+                    reg_var = random.uniform(-1.5, 1.5)
                     filas.append({
                         "ano_trimestre": f"{año}-{tri}",
                         "ano": año,
                         "trimestre": tri,
                         "region": region,
                         "sexo": sexo,
-                        "tasa_desocupacion": round(base_desoc + covid + reg_var + np.random.uniform(-0.5, 0.5), 1),
-                        "tasa_ocupacion":    round(base_ocup  - covid/2 + reg_var + np.random.uniform(-0.5, 0.5), 1),
-                        "tasa_participacion": round(base_ocup + base_desoc / 10 + np.random.uniform(-0.3, 0.3), 1),
+                        "tasa_desocupacion": round(base_desoc + covid + reg_var + random.uniform(-0.5, 0.5), 1),
+                        "tasa_ocupacion":    round(base_ocup  - covid/2 + reg_var + random.uniform(-0.5, 0.5), 1),
+                        "tasa_participacion": round(base_ocup + base_desoc / 10 + random.uniform(-0.3, 0.3), 1),
                     })
     return pd.DataFrame(filas)
 
@@ -184,7 +180,6 @@ def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
     Intenta mapear columnas del CSV real a los nombres
     estándar que usa la app.
     """
-    # Mapeo flexible de nombres de columna (minúsculas + sin espacios)
     MAPA = {
         "ano_trimestre": ["ano_trimestre", "periodo", "trimestre_movil", "trimestre"],
         "ano":           ["ano", "año", "anio", "year"],
@@ -269,11 +264,10 @@ def main():
 
     if es_demo:
         st.warning(
-            "⚠️ **Modo demostración**: No fue posible obtener los CSV desde la API en este momento. "
-            "Se muestran datos simulados con base en la metodología ENE (INE). "
-            "Los datos reales están disponibles en "
-            "[datos.gob.cl/dataset/encuesta-nacional-de-empleo-ene]"
-            "(https://datos.gob.cl/dataset/encuesta-nacional-de-empleo-ene)."
+            "⚠️ **Aviso de conexión**: No fue posible establecer conexión con el origen CSV de la API en este momento. "
+            "Se despliegan datos de demostración estadísticamente representativos de la metodología ENE. "
+            "Para consultar los datos reales actualizados diríjase a "
+            "[datos.gob.cl](https://datos.gob.cl/dataset/encuesta-nacional-de-empleo-ene)."
         )
     else:
         titulo = metadata.get("result", {}).get("title", "ENE")
@@ -342,7 +336,7 @@ def main():
             st.markdown(kpi_html("Tasa Participación (prom.)", val,
                                  "Fuerza de trabajo activa", ""), unsafe_allow_html=True)
         with col4:
-            st.markdown(kpi_html("Registros cargados", f"{n_records:,}",
+            st.markdown(kpi_html("Registros analizados", f"{n_records:,}",
                                  "Observaciones en el período", ""), unsafe_allow_html=True)
     else:
         st.info("Selecciona filtros para ver los indicadores.")
@@ -376,7 +370,6 @@ def main():
                     markersize=4, markerfacecolor=COLORES["fondo"],
                     markeredgecolor=COLORES["primario"], markeredgewidth=1.5)
 
-            # Máximo y mínimo anotados
             idx_max = serie["tasa_desocupacion"].idxmax()
             idx_min = serie["tasa_desocupacion"].idxmin()
             pos_max = serie.index.get_loc(idx_max)
@@ -395,7 +388,6 @@ def main():
                         color=COLORES["verde"], fontsize=9,
                         arrowprops=dict(arrowstyle="->", color=COLORES["verde"]))
 
-            # Ejes
             step = max(1, len(serie) // 10)
             ax.set_xticks(range(0, len(serie), step))
             ax.set_xticklabels(serie["ano_trimestre"].iloc[::step], rotation=45, ha="right", fontsize=8)
@@ -420,7 +412,6 @@ def main():
                             .sort_values(ascending=True)
                             .reset_index())
 
-            # Color condicional según nivel
             prom_nac = regional["tasa_desocupacion"].mean()
             colores_barra = [
                 COLORES["acento"]    if v > prom_nac * 1.1 else
@@ -433,11 +424,9 @@ def main():
             bars = ax.barh(regional["region"], regional["tasa_desocupacion"],
                            color=colores_barra, edgecolor="none", height=0.65)
 
-            # Línea promedio nacional
             ax.axvline(prom_nac, color=COLORES["naranja"], linestyle="--",
                        linewidth=1.5, label=f"Promedio: {prom_nac:.1f}%")
 
-            # Etiquetas en barras
             for bar, val in zip(bars, regional["tasa_desocupacion"]):
                 ax.text(val + 0.1, bar.get_y() + bar.get_height() / 2,
                         f"{val:.1f}%", va="center", ha="left", fontsize=8.5,
@@ -451,7 +440,6 @@ def main():
             st.pyplot(fig)
             plt.close()
 
-            # Leyenda color
             c1, c2, c3 = st.columns(3)
             c1.markdown(f"🔴 **Por encima** del promedio (+10%)")
             c2.markdown(f"🔵 **Por debajo** del promedio (-10%)")
@@ -470,6 +458,10 @@ def main():
 
             if años_sel and "ano" in df_genero.columns:
                 df_genero = df_genero[df_genero["ano"].isin(años_sel)]
+            
+            # Filtro corregido: agregamos la validación regional
+            if regiones_sel and "region" in df_genero.columns:
+                df_genero = df_genero[df_genero["region"].isin(regiones_sel)]
 
             df_pivot = (df_genero[df_genero["sexo"].isin(["Hombre", "Mujer"])]
                         .groupby(["ano_trimestre", "sexo"])["tasa_desocupacion"]
@@ -482,7 +474,6 @@ def main():
 
                 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
-                # Subgráfico 1: líneas por género
                 x = range(len(df_pivot))
                 ax1.plot(x, df_pivot["Hombre"], color=COLORES["primario"],
                          linewidth=2, label="Hombre", marker="o", markersize=3)
@@ -496,7 +487,6 @@ def main():
                 ax1.set_title("Tasa de Desocupación por Sexo", fontsize=11)
                 ax1.grid(axis="y", alpha=0.4)
 
-                # Subgráfico 2: brecha
                 colores_brecha = [COLORES["acento"] if v >= 0 else COLORES["primario"]
                                   for v in df_pivot["Brecha"]]
                 ax2.bar(x, df_pivot["Brecha"], color=colores_brecha, alpha=0.8)
@@ -514,7 +504,6 @@ def main():
                 st.pyplot(fig)
                 plt.close()
 
-                # Métricas resumen
                 brecha_prom = df_pivot["Brecha"].mean()
                 col_m, col_h, col_b = st.columns(3)
                 col_m.metric("Desocupación Mujer (prom.)", f"{df_pivot['Mujer'].mean():.1f}%")
@@ -540,7 +529,6 @@ def main():
             height=420
         )
 
-        # Descarga
         csv_bytes = df_f[mostrar_cols].to_csv(index=False).encode("utf-8")
         st.download_button(
             label="📥 Descargar datos filtrados (CSV)",
