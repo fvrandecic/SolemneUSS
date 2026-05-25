@@ -6,6 +6,7 @@ Universidad San Sebastián - FITO9017
 
 import streamlit as st
 import requests
+import json
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -84,7 +85,7 @@ def obtener_metadata_dataset(dataset_id: str) -> dict:
     url = f"{CKAN_BASE}/package_show"
     resp = requests.get(url, params={"id": dataset_id}, timeout=30)
     resp.raise_for_status()
-    return resp.json()
+    return json.loads(resp.text)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -293,6 +294,21 @@ def main():
     sexos_disp = sorted(df["sexo"].dropna().unique()) if "sexo" in df.columns else ["Total"]
     sexo_sel   = st.sidebar.selectbox("Sexo", sexos_disp,
                                       index=sexos_disp.index("Total") if "Total" in sexos_disp else 0)
+
+    # ── Sidebar: metadata de la API (JSON) ──────
+    if metadata:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("## 🗂️ Metadata del dataset")
+        result = metadata.get("result", {})
+        info_json = {
+            "título":        result.get("title", ""),
+            "organización":  result.get("organization", {}).get("title", ""),
+            "licencia":      result.get("license_title", ""),
+            "recursos_csv":  len([r for r in result.get("resources", [])
+                                  if r.get("format", "").upper() in ("CSV", "TEXT/CSV")]),
+            "última_actualización": result.get("metadata_modified", ""),
+        }
+        st.sidebar.code(json.dumps(info_json, ensure_ascii=False, indent=2), language="json")
 
     # Aplicar filtros
     df_f = df.copy()
